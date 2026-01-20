@@ -1,291 +1,156 @@
-# Hindi Honorific Evaluation Benchmark Charter
-
-**Project Title:** Hindi Honorific Evaluation Benchmark (working title: "HonorificEval")
+# Hindi Honorific Evaluation Benchmark
 
 **Author:** Adit
-
 **Advisor:** Professor Malihe Alikhani
-
 **Last Updated:** 2026-01-20
+**Status:** Data exploration done, starting work on training pairs
 
-**Status:** In Progress
+## Problem
 
----
+Mukherjee et al. (EMNLP 2025) showed LLMs don't handle Hindi honorifics well, but they only analyzed the problem—there's no automatic way to evaluate it.
 
-## 1. Problem Statement
+Why this matters:
+- Hindi has 600M+ speakers. Honorifics are mandatory (not optional like English titles).
+- Using the wrong honorific is socially wrong and models deployed in Hindi need to get this right.
+- Existing metrics like BERTScore and COMET only check semantic similarity, not whether something is pragmatically appropriate.
+- Even frontier models (GPT-5.2, Gemini 3) only score ~35% on OpenAI's culture-aware benchmark (IndQA), suggesting pragmatic understanding is a weak spot.
 
-### 1.1 The Gap
-[What problem exists that this benchmark solves?]
+## Main Question
 
-- Mukherjee et al. (EMNLP 2025) showed LLMs struggle with Hindi honorifics, but only did descriptive analysis
-- No automatic evaluation tool exists for Hindi honorific appropriateness
-- Existing metrics (BERTScore, etc.) measure semantic similarity, not pragmatic appropriateness
+Can we build a metric that automatically scores whether an LLM-generated sentence uses the right honorific (formal आप vs informal तुम/तू)?
 
-### 1.2 Why It Matters
-[Why should anyone care?]
+Sub-questions:
+- Do different models have biases (e.g., always using informal)?
+- Do models perform differently based on who they're talking about (by gender, age, fame)?
+- Does a metric trained on embeddings correlate with what humans think is appropriate?
 
-- Hindi has 600M+ speakers
-- Honorifics are obligatory, not optional — wrong usage is socially significant
-- LLMs deployed in Hindi contexts need pragmatic competence
-- [Add more...]
+## Scope
 
----
+**In:**
+- Hindi, Devanagari script
+- Binary classification: आप (formal) vs informal (तुम/तू)
+- Pronouns and verb forms
+- Second-person address only
 
-## 2. Research Questions
+**Out (for now):**
+- Other Indic languages
+- Code-mixed Hindi-English
+- Spoken/prosodic honorifics
+- Third-person honorifics
+- Three-way distinction (तू vs तुम—our datasets don't distinguish these)
 
-### Primary Question
-> [Main question your benchmark answers]
-> 
-> e.g., "Can we automatically evaluate whether LLM-generated Hindi text uses contextually appropriate honorifics?"
+**Why binary?** Both the Hindi Politeness Corpus and Wiki-LLM only mark formal/informal, not the three-level system.
 
-### Secondary Questions
-- [ ] Do LLMs show systematic bias in honorific usage across social categories (caste, gender, religion)?
-- [ ] Which models perform best at Hindi pragmatic competence?
-- [ ] [Add more...]
+## Data
 
----
+**Hindi Politeness Corpus v0.2:** 56K examples, has an `ap` column (1=formal, 0=informal). From social media (blogs, Twitter). Mix of Devanagari and Romanized text. Will use ~45K for training.
 
-## 3. Scope
+**Wiki-LLM:** 10K Hindi Wikipedia articles + 1K entities with socio-demographic metadata (age, gender, fame, role). Also marks honorifics as binary. Good for understanding bias patterns.
 
-### 3.1 In Scope
-- [ ] Hindi language (Devanagari script)
-- [ ] Three-level honorific system (tu/tum/aap)
-- [ ] Pronoun forms
-- [ ] Verb morphology agreement
-- [ ] Social categories: [list which — caste, gender, religion, age?]
-- [ ] [Add more...]
+Both are open-licensed and have binary labels (formal/informal only).
 
-### 3.2 Out of Scope (for this paper)
-- [ ] Other Indic languages (Bengali, Marathi, etc.)
-- [ ] Code-mixed Hindi-English
-- [ ] Spoken/prosodic honorific cues
-- [ ] [Add more...]
+## Approach
 
-### 3.3 Open Scope Decisions
-- [ ] Include only second-person (tu/tum/aap) or also third-person honorifics?
-- [ ] Focus on generation only, or also comprehension?
-- [ ] [Add more...]
+1. **Create training pairs** by transforming formal sentences to informal:
+   - Pronoun: आप → तुम/तू
+   - Verb: बैठिए → बैठो
+   - Remove honorific suffix जी
+   - Need to manually validate 10-20 pairs first to check feasibility
 
----
+2. **Train a contrastive encoder** on these pairs
+   - Use Hindi-specific base model (indic-bert or google/muril)
+   - Framework: sentence-transformers
+   - Loss: TripletLoss
+   - Goal: same-meaning sentences with different registers should be far apart in embedding space
 
-## 4. Data Sources
+3. **Build the metric:**
+   ```
+   honorific_score = cosine_similarity(reference_embedding, candidate_embedding)
+   ```
+   Score ranges 0-1. Higher = more appropriate honorific choice.
 
-### 4.1 Primary Data
+**Tools:** Indic NLP Library, Stanza Hindi, or iNLTK for morphological analysis if needed
 
-| Dataset | Size | What It Provides | Link | Status |
-|---------|------|------------------|------|--------|
-| Hindi Politeness Corpus | ~30K posts | Honorific annotations (pronouns, verbs) | [GitHub](https://github.com/kmi-linguistics/hindi-politeness) | [ ] Downloaded [ ] Explored |
-| Mukherjee Wikipedia Data | 10K articles | Honorific usage + socio-demographic attributes | [GitHub](https://github.com/souro/honorific-wiki-llm) | [ ] Downloaded [ ] Explored |
+## Evaluation
 
-### 4.2 Supplementary Data (if needed)
+**Prompts:** Will use Wiki-LLM entities to create contexts: "Describe [person]", "Write about [historical figure]", etc. Then score whether the model's response uses appropriate honorifics for that person (age, fame, role, etc.).
 
-| Dataset | Potential Use | Link | Status |
-|---------|---------------|------|--------|
-| IndiBias | Social category names/terms | [GitHub](https://github.com/niharr/IndiBias) | [ ] To explore |
-| IndicCorp | Pretraining / additional examples | [AI4Bharat](https://ai4bharat.org/) | [ ] To explore |
+**Models to test:**
 
-### 4.3 Data Questions to Resolve
-- [ ] Is Hindi Politeness Corpus sufficient for training pairs?
-- [ ] What format is the data in?
-- [ ] Any licensing restrictions?
-- [ ] [Add more...]
+Frontier models (2026):
+- GPT-5.2 (Dec 2025) — top performer on culture-aware benchmarks, scores 34.9% on IndQA
+- Claude Opus 4.5 (Nov 2025) — leads on multilingual benchmarks
+- Gemini 3 Pro (2026) — shows high variance in cultural alignment
+- Llama 3.1/4 (open-source baseline)
 
----
+Hindi-specific models:
+- OpenHathi (Sarvam AI)
+- Airavata (AI4Bharat)
 
-## 5. Methodology
+**Why frontier models?** They score ~35% on culture-aware benchmarks despite being SOTA. Testing if honorifics is where they're weak.
 
-### 5.1 High-Level Approach
-```
-[Diagram or description of overall pipeline]
+## Success Criteria
 
-Training Data (Hindi Politeness Corpus)
-         ↓
-    Pair Generation (rule-based transformation)
-         ↓
-    Contrastive Encoder Training
-         ↓
-    Evaluation Metric
-         ↓
-    LLM Evaluation
-```
+**For the metric:**
+- Formal and informal versions of the same sentence score far apart
+- Correlates with human judgment (target r > 0.6)
+- Can distinguish good honorific choices from bad ones
 
-### 5.2 Training Pair Creation
+**For model evaluation:**
+- Clear ranking of models (frontier vs Hindi-specific)
+- Identify if models have systematic biases (always informal, or biased by gender/age/fame)
+- See if frontier models that score ~35% on culture benchmarks also do poorly on honorifics
 
-**Approach:** [Rule-based transformation / Other]
+## Limitations
 
-**Transformation Rules:**
-| From | To | Pronoun Change | Verb Change Example |
-|------|-----|----------------|---------------------|
-| Formal | Familiar | आप → तुम | बैठिए → बैठो |
-| Formal | Intimate | आप → तू | बैठिए → बैठ |
-| Familiar | Intimate | तुम → तू | बैठो → बैठ |
-
-**Tools Needed:**
-- [ ] Hindi morphological analyzer — Options: [Indic NLP Library](https://github.com/anoopkunchukuttan/indic_nlp_library), [Stanza](https://stanfordnlp.github.io/stanza/)
-- [ ] [Other tools...]
-
-**Open Questions:**
-- [ ] Can transformations be fully automated or need manual verification?
-- [ ] How to handle irregular verbs?
-- [ ] [Add more...]
-
-### 5.3 Contrastive Encoder
-
-**Base Model Options:**
-- [ ] [ai4bharat/indic-bert](https://huggingface.co/ai4bharat/indic-bert)
-- [ ] [google/muril-base-cased](https://huggingface.co/google/muril-base-cased)
-- [ ] [Other options...]
-
-**Training Setup:**
-- Loss function: Triplet Loss / InfoNCE / [Other]
-- Pair structure: (anchor, positive, negative)
-  - Anchor: original sentence
-  - Positive: same register, similar meaning
-  - Negative: same meaning, wrong register
-
-**Hyperparameters (to tune):**
-- Learning rate: [TBD]
-- Batch size: [TBD]
-- Epochs: [TBD]
-- Margin (for triplet loss): [TBD]
-
-### 5.4 Evaluation Metric Design
-
-**Input:** 
-- Context (social situation)
-- Reference (appropriate response)
-- Candidate (LLM output)
-
-**Output:** 
-- Score (0-1) indicating honorific appropriateness
-
-**Scoring Method:**
-```
-score = cosine_similarity(encode(reference), encode(candidate))
-```
-
-**Validation:**
-- [ ] Correlate with human judgments
-- [ ] Test on held-out examples
-- [ ] [Other validation...]
-
----
-
-## 6. Evaluation Tasks
-
-### 6.1 LLM Evaluation Tasks
-
-| Task | Description | Input | Expected Output |
-|------|-------------|-------|-----------------|
-| Honorific Generation | Given context, generate appropriate response | Social context + prompt | Hindi text with correct honorifics |
-| Honorific Selection | Choose appropriate form | Context + options | Correct option |
-| [Add more...] | | | |
-
-### 6.2 Models to Evaluate
-
-| Model | Type | Why Include |
-|-------|------|-------------|
-| GPT-4 | Proprietary multilingual | SOTA baseline |
-| Llama 3 | Open multilingual | Open-source baseline |
-| OpenHathi | Hindi-optimized | Hindi-specific comparison |
-| Sarvam | Hindi-optimized | Hindi-specific comparison |
-| [Add more...] | | |
-
-### 6.3 Evaluation Dimensions
-
-- [ ] Overall honorific accuracy
-- [ ] By social category (caste, gender, religion, age)
-- [ ] By formality level (formal vs informal contexts)
-- [ ] [Add more...]
-
----
-
-## 7. Success Metrics
-
-### 7.1 For the Evaluation Model
-- [ ] Separation in embedding space between appropriate/inappropriate (measured by: [metric])
-- [ ] Correlation with human judgments (target: r > [X])
-- [ ] [Add more...]
-
-### 7.2 For LLM Evaluation
-- [ ] Clear differentiation between models
-- [ ] Interpretable results (can explain why model X scores higher/lower)
-- [ ] [Add more...]
-
----
-
-## 8. Limitations & Future Work
-
-### 8.1 Known Limitations
-- [ ] Only covers Hindi (not other Indic languages)
-- [ ] Relies on rule-based transformations (may miss edge cases)
-- [ ] [Add more...]
-
-### 8.2 Future Work (Paper 2+)
-- [ ] Extend to Bengali, Marathi, etc.
-- [ ] Fine-tune LLM to improve honorific competence
-- [ ] [Add more...]
-
----
-
-## 9. Timeline
-
-| Week | Tasks | Deliverable |
-|------|-------|-------------|
-| 1 | Download data, explore structure, document transformation rules | Data exploration notes |
-| 2 | Build pair generation pipeline, create initial pairs | 100+ validated pairs |
-| 3 | Train contrastive encoder, iterate | Trained model |
-| 4 | Build evaluation metric, validate | Working metric |
-| 5 | Evaluate LLMs, analyze results | Results tables |
-| 6 | Write paper | Draft |
-
----
-
-## 10. Open Questions & Decisions
-
-### Blocking Questions (need answer to proceed)
-- [ ] [Question 1]
-- [ ] [Question 2]
-
-### Questions for Professor
-- [ ] Is rule-based transformation acceptable methodology?
-- [ ] Any recommended Hindi morphological analyzers?
-- [ ] Target venue: ISCLS 2026? ACL workshop? Other?
-
-### Decisions Made
-| Decision | Choice | Rationale | Date |
-|----------|--------|-----------|------|
-| [Example: Base model] | [indic-bert] | [Most Hindi data in pretraining] | [Date] |
-
----
-
-## 11. Resources & References
-
-### Key Papers
-- Mukherjee et al. (EMNLP 2025) - Hindi/Bengali honorifics in LLMs — https://arxiv.org/abs/2501.03479
-- Kumar (LREC 2014) - Hindi Politeness Corpus — https://github.com/kmi-linguistics/hindi-politeness
-- Gao et al. (EMNLP 2021) - SimCSE — https://arxiv.org/abs/2104.08821
-- Zhang et al. (ICLR 2020) - BERTScore — https://arxiv.org/abs/1904.09675
-- Farhansyah et al. (ACL 2025) - Javanese honorifics — [TBD link]
-
-### Tools
-- Indic NLP Library — https://github.com/anoopkunchukuttan/indic_nlp_library
-- Stanza (Hindi pipeline) — https://stanfordnlp.github.io/stanza/
-
-### Code Repositories
-- Hindi Politeness: https://github.com/kmi-linguistics/hindi-politeness
-- Mukherjee data: https://github.com/souro/honorific-wiki-llm
-
----
-
-## 12. Log / Notes
-
-### 2026-01-20
-- Updated charter with current links and dates
-
-### [Date]
-- [Notes...]
-
----
-
-*This is a living document. Update as the project evolves.*
+- **Binary only** — our data doesn't distinguish तू from तुम, so that's a limitation
+- Rule-based transformations might miss irregular verbs
+- Social media domain (where we get training data) might not match formal writing
+- Hindi only (other Indic languages for later)
+
+## Next Steps
+
+1. Manually create 10-20 training pairs to validate the transformation rules
+2. Build automated pair generation from the corpus
+3. Train the contrastive encoder
+4. Build the metric and validate with human ratings
+5. Evaluate models and write up results
+
+## Open Questions
+
+- Rule-based transformation acceptable for the paper?
+- Best Hindi morphological analyzer to use?
+- Target venue for publishing?
+
+## References
+
+**Key papers:**
+- Mukherjee et al. (EMNLP 2025) — Hindi/Bengali honorifics in LLMs
+- Kumar (LREC 2014) — Hindi Politeness Corpus
+- Gao et al. (EMNLP 2021) — SimCSE (contrastive learning method)
+- Farhansyah et al. (ACL 2025) — Javanese honorifics (parallel work on honorific systems)
+
+**Benchmarks:**
+- OpenAI IndQA (2025) — Shows frontier models only score ~35% on culture-aware questions
+
+**Data:**
+- Hindi Politeness Corpus: https://github.com/kmi-linguistics/hindi-politeness
+- Mukherjee Wiki-LLM: https://github.com/souro/honorific-wiki-llm
+
+## Notes
+
+**2026-01-20 Data Exploration**
+- Explored both datasets. Both are binary (formal/informal). Neither distinguishes तू from तुम.
+- Hindi Politeness has `ap` column (1=formal, 0=informal)
+- Wiki-LLM has "Honorific" / "Non-Honorific" labels
+- Both open-licensed with 45K+ examples available
+
+**2026-01-20 Frontier Model Analysis**
+- Checked OpenAI's IndQA benchmark (culture-aware, 12 Indian languages)
+- Frontier models score ~35% despite being SOTA:
+  - GPT-5.2: 34.9%
+  - Gemini 2.5 Pro: 34.3%
+  - Grok 4: 28.5%
+  - (vs GPT-4 Turbo: 12.1%)
+- This validates that pragmatic understanding is weak in LLMs, even frontier models
+- Updated model list to test GPT-5.2, Claude Opus 4.5, Gemini 3 Pro
