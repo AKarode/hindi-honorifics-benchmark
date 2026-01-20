@@ -31,7 +31,7 @@ Second-person only. Hindi text in Devanagari. No code-mixing for now.
 
 **Hindi Politeness Corpus (v0.2):** ~56K examples from social media. Has an `ap` column where 1=formal (uses आप), 0=informal. Also has columns for other politeness markers (जी, verb forms, etc.).
 
-**Wiki-LLM (Mukherjee et al.):** 10K Hindi Wikipedia articles with metadata—gender, age, fame, role, etc. Good for checking if models have social biases.
+**Wiki-LLM (Mukherjee et al.):** 10K Hindi Wikipedia articles with metadata—gender, age, fame, role, etc.
 
 Both explored, both binary, both open-licensed.
 
