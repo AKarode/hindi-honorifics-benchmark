@@ -2,7 +2,7 @@
 
 Investigating whether LLMs handle Hindi second-person honorifics (तू/तुम/आप) appropriately in conversational contexts.
 
-**Status**: Exploratory phase — discovering if a problem exists before building any benchmark.
+**Status**: Exploratory phase — validating if Mukherjee's findings on 3rd person are applicative to 2nd person. 
 
 ## What's here
 
