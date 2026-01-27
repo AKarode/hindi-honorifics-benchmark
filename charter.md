@@ -1,111 +1,97 @@
-# Hindi Honorific Evaluation Benchmark
+# Hindi Honorifics — Exploratory Study
 
-Adit | Prof. Malihe Alikhani | Updated Jan 20, 2026
+Adit | Prof. Malihe Alikhani | Updated Jan 27, 2026
 
 ---
 
-## What's the problem?
+## Project Status: Exploratory Phase
 
-Mukherjee et al. (EMNLP 2025) showed that LLMs mess up Hindi honorifics, but they just described the problem—no one's built a way to automatically measure it. That's what this project does.
+We are **discovering whether a problem exists** before building anything. No benchmark, no metrics, no claims yet.
 
-Why it matters: Hindi has 600M+ speakers and honorifics aren't optional like English "sir/ma'am." Using तू when you should use आप is genuinely rude. If we're deploying LLMs in Hindi, they need to get this right.
+## What's the question?
 
-Existing metrics (BERTScore, COMET) measure semantic similarity, not social appropriateness. We need something new.
+Mukherjee et al. (EMNLP 2025) showed LLMs mess up Hindi honorifics in **third-person reference** (formal Wikipedia contexts). They noted: *"honorific dynamics can differ substantially in second-person usage and more casual or spoken communication."*
 
-## Research question
+We're investigating that gap: **Do LLMs handle second-person honorifics (तू/तुम/आप) appropriately in conversational contexts?**
 
-Can we build a metric that scores whether LLM-generated Hindi uses the right honorific level?
+Why it matters: Hindi has 600M+ speakers. Honorifics aren't optional—using तू when you should use आप is genuinely rude. If LLMs are deployed in Hindi conversations, they need to get direct address right.
 
-Also want to know:
-- Do models have biases (e.g., always defaulting to informal)?
-- Do they treat different social groups differently (gender, age)?
-- Is there a gap between what models can *recognize* as correct vs what they actually *produce*?
+## What we're looking for
 
-## Scope
+Failure modes (if they exist):
+- Over-formality (always आप) or over-informality
+- Inconsistency across runs
+- Pronoun–verb agreement mismatches (आप with तुम verb forms)
+- Avoidance (rephrasing to dodge direct address)
+- Bias patterns in pronoun choice
 
-Focusing on binary: आप (formal) vs तुम/तू (informal). Both our datasets only mark this distinction—they don't separate तू from तुम, so we can't either. That's a limitation we'll note.
+## Current Progress
 
-Second-person only. Hindi text in Devanagari. No code-mixing for now.
+### Done
+- **Probe extraction pipeline**: `scripts/indicdialogue_extract_probes.py` extracts pronoun-cloze probes from IndicDialogue Hindi subtitles
+- **Probe dataset**: `probes.csv` — large set of real dialogue lines with masked pronouns, context windows, and gold labels
+- **Data validation**: Devanagari filtering, context requirements, multiple pronoun forms (18 forms including oblique cases)
 
-## Data
+### In Progress
+- Sampling strategy for manageable probe set
+- Verb agreement tracking (not yet in extraction)
 
-**Hindi Politeness Corpus (v0.2):** ~56K examples from social media. Has an `ap` column where 1=formal (uses आप), 0=informal. Also has columns for other politeness markers (जी, verb forms, etc.).
+### Not Started
+- Running probes on models (GPT-5.2, Claude Opus 4.5, Claude Sonnet 4, Gemini 2.5 Pro)
+- Pattern analysis
+- Any benchmark or metric work
 
-**Wiki-LLM (Mukherjee et al.):** 10K Hindi Wikipedia articles with metadata—gender, age, fame, role, etc.
+## Data Sources
 
-Both explored, both binary, both open-licensed.
+| Source | Role | Status |
+|--------|------|--------|
+| IndicDialogue | Primary probe source (real subtitles) | Extraction complete |
+| Hindi Politeness Corpus | Validation/triangulation only | Available |
+| Wiki-LLM (Mukherjee) | Prior work reference | Not used for probes |
 
-## Approach
+## Probe Types (from real data only)
 
-1. Take formal sentences (ap=1) and transform them to informal versions
-   - Change pronouns: आप → तुम
-   - Change verbs: बैठिए → बैठो
-   - Drop honorific जी
+1. **Pronoun cloze**: Mask the pronoun, model fills blank given context. Gold = original.
+2. **Contextual paraphrase**: Same context, model paraphrases. Compare pronoun/verb choice.
+3. **Lexical-cue labeling**: Only lines with explicit relationship markers (sir/जी/maa/papa).
 
-2. Train a contrastive encoder so same-meaning sentences with different registers end up far apart in embedding space
+## Constraints
 
-3. Use cosine similarity as the metric—compare LLM output to an appropriate reference
-
-Need to manually do 10-20 transformations first to make sure the rules work before automating.
-
-## Two evaluation tasks
-
-**Recognition:** Show the model two options (formal/informal) with a social context. Ask which is appropriate. Simple accuracy measure. Tests whether the model *knows* the right answer.
-
-**Production:** Give context, ask model to generate a response. Score it with our metric. Tests whether the model can actually *produce* the right form.
-
-Comparing these tells us if there's a comprehension-production gap—models might know the answer but fail to generate it.
-
-## What we'll analyze
-
-- Overall scores on both tasks
-- Breakdown by social category (gender, age, fame) using Wiki-LLM metadata
-- Error types: pronoun wrong? verb wrong? both?
-- Error direction: do models skew informal or formal?
-
-## Models to test
-
-Frontier: GPT-5.2, Claude Opus 4.5, Gemini 3 Pro, Llama 4
-Hindi-specific: OpenHathi, Airavata
-
-Curious if Hindi-specific models do better despite being smaller.
+- **Non-synthetic only**: All probes derived from real dialogue, no invented scenarios
+- **Devanagari only**: English/romanized lines filtered out
+- **Context required**: Isolated utterances dropped
 
 ## Limitations
 
-- Binary only (can't distinguish तू from तुम)
-- Training data is social media, might not generalize to formal writing
-- Rule-based transformations might miss edge cases
-- Hindi only for now
+- Subtitles lack speaker/relationship metadata
+- Context windows are short (1-2 lines)
+- No verb form tracking yet
+- Hindi only
 
-## Next steps
+## What comes next (in order)
 
-1. ~~Explore data~~ done
-2. **Manually create 10-20 training pairs** ← current
-3. Build pair generation pipeline
-4. Create recognition items (300-500 MCQ)
-5. Create production prompts
-6. Train encoder
-7. Validate metric against human judgments
-8. Run evaluation
-9. Write paper
+1. Sample probe set for manual validation
+2. Add verb agreement extraction to pipeline
+3. Run probes on target models
+4. Analyze outputs for failure patterns
+5. **Then decide**: Is there a problem worth a benchmark?
 
-## Open questions for professor
+## Open questions
 
-- Is rule-based transformation okay or should we do something else?
-- Any Hindi morphological analyzer recommendations?
-- Target venue?
+- What sampling strategy gives representative coverage?
+- How to handle ambiguous contexts where multiple pronouns are acceptable?
+- Minimum probe count for reliable pattern detection?
 
 ## References
 
-- Mukherjee et al. (EMNLP 2025) — the paper showing the problem exists
+- Mukherjee et al. (EMNLP 2025) — third-person honorific bias
 - Kumar (LREC 2014) — Hindi Politeness Corpus
-- Gao et al. (EMNLP 2021) — SimCSE, the contrastive learning method we're adapting
-- Farhansyah et al. (ACL 2025) — similar work on Javanese honorifics
-
-Data: [hindi-politeness](https://github.com/kmi-linguistics/hindi-politeness) | [wiki-llm](https://github.com/souro/honorific-wiki-llm)
+- Farhansyah et al. (ACL 2025) — Javanese honorifics
 
 ---
 
-## Notes
+## Log
 
-**Jan 20** — Explored both datasets. Both are binary. Hindi Politeness uses `ap` column (1/0). Wiki-LLM uses "Honorific"/"Non-Honorific" labels. Neither distinguishes तू from तुम so we're stuck with binary. Added two-task design (recognition + production) to measure comprehension-production gap.
+**Jan 27** — Probe extraction complete (`probes.csv`). Pivoting to sampling and model runs.
+
+**Jan 26** — Shifted to non-synthetic probing using IndicDialogue; exploratory focus.
