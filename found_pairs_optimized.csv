@@ -1,0 +1,2 @@
+pair_id,formal_id,formal_text,informal_id,informal_text,semantic_similarity,confidence,notes
+1,co3hd22966,"कोई पूछेगा,दिखा दूंगा निशानी तेरी,दिल में चुभता हुआ इक तीर बना लेने दे.वाह बहुत खूब है आपकी ये गज़ल.",co3hd22964,"कोई पूछेगा,दिखा दूंगा निशानी तेरी,दिल में चुभता हुआ इक तीर बना लेने देवाह!! वाह!! बहुत खूब !!",0.860,medium,Intent: general. Patterns: आपकी -> तुम्हारी/तेरी
