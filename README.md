@@ -2,7 +2,7 @@
 
 Investigating whether LLMs handle Hindi second-person honorifics (तू/तुम/आप) appropriately in conversational contexts.
 
-**Status**: Exploratory phase — discovering if a problem exists before building any benchmark.
+**Status**: Exploratory phase — validating if Mukherjee's findings on 3rd person are applicative to 2nd person. 
 
 ## What's here
 
@@ -27,3 +27,6 @@ All probes derived from **non-synthetic** sources (IndicDialogue movie subtitles
 - `modules/IndicDialogue/` — subtitle dialogues (primary source)
 - `modules/hindi-politeness/` — reference corpus
 - `modules/honorific-wiki-llm/` — Mukherjee Dataset
+
+
+1. General sentence motivation of the problem, what tghe problem is how im stufdying at and these are the results i got. generation problem, bias problem, context problem. better at processing the context. make sure it has a timeline. find a venue to submit for. 

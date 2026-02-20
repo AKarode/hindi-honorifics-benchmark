@@ -1,8 +1,5 @@
-modules/
-
-PROBE.MD
-CLAUDE.md
-.DS_Store
-Javanese-paper.pdf
-LLM-Hindi-Mukherjee.pdf
+# Large intermediate probe files (pre-filter)
 probes.csv
+probes_ctx1.csv
+probes_ctx5.csv
+modules/
