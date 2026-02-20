@@ -87,16 +87,14 @@
 - Model generates next turn with appropriate honorifics
 - Tests: Can the model produce correct register in free generation?
 
-### Task 3: Style Transfer (Adaptation)
-- **(A) Situation-Anchored Rewrite** — source sentence + situational vignette → model rewrites at inferred register
-- **(B) Consistency Repair** — wrong-register sentence inserted into dialogue → model corrects it
-- Tests: Can the model transform between registers based on social inference?
-
 ### Planned Ablation: Mitigation Strategies
 - Zero-shot baseline (no guidance)
 - System prompt (instructions about Hindi honorifics)
 - Few-shot (2, 4, 8 examples)
 - *(Fine-tuning deferred to future work)*
+
+### Deferred: Style Transfer
+- Situation-anchored rewrite and consistency repair designs are archived (`archive/STYLE_TRANSFER_DESIGN.md`) for potential future work or expansion in revision.
 
 ## Comparison with Related Benchmarks
 

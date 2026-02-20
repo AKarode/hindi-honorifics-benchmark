@@ -81,7 +81,7 @@ Methodology is **ACL-competitive**. Closest published comp: Farhansyah et al. (A
 - ✅ 17 clean Hindi films, 4,382 probes with 5-line context
 - ✅ Cloze task ready
 - ✅ Generation task designed (dialogue continuation)
-- ✅ Style transfer task designed (situation-anchored + consistency repair)
+- 📦 Style transfer task designed but deferred to future work (archived)
 - ✅ Probe filtering script (`scripts/filter_probes_clean17.py`)
 - ✅ Filtered output (`probes_clean17_ctx5.csv`)
 - 🔲 IAA validation on probe subset
