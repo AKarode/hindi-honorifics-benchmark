@@ -1,0 +1,16 @@
+{
+  "total": 500,
+  "exact_accuracy": 0.0,
+  "tier_accuracy": 0.0,
+  "valid_form_rate": 0.0,
+  "tier_confusion": {},
+  "top_predictions": {
+    "ERROR: {\"error\": {\"message\": \"Unsupported value: 'temperature' does not support 0.0 with this model. Only the default (1) value is supported.\", \"type\": \"invalid_request_error\", \"param\": \"temperature\", \"code": 500
+  },
+  "tier_accuracy_तू": 0.0,
+  "tier_count_तू": 54,
+  "tier_accuracy_तुम": 0.0,
+  "tier_count_तुम": 237,
+  "tier_accuracy_आप": 0.0,
+  "tier_count_आप": 209
+}

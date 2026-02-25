@@ -28,12 +28,15 @@ def load_metrics(name):
 
 configs = {
     'Random': 'baseline_random_500',
-    'Majority (तुम)': 'baseline_majority_500',
-    'Tier-Majority (आप)': 'baseline_tier_majority_500',
-    'GPT-4o-mini': 'gpt4o_mini_mc_500',
-    'GPT-4o': 'gpt4o_mc_500',
-    'GPT-4.1-mini': 'gpt41_mini_mc_500',
-    'GPT-5.2': 'gpt52_mc_500',
+    'Majority': 'baseline_majority_500',
+    'GPT-4.1-nano\n$0.10': 'gpt41_nano_mc_500',
+    'GPT-4o\n$2.50': 'gpt4o_mc_500',
+    'GPT-4o-mini\n$0.15': 'gpt4o_mini_mc_500',
+    'GPT-4.1-mini\n$0.40': 'gpt41_mini_mc_500',
+    'GPT-5.2\n$1.75': 'gpt52_mc_500',
+    'GPT-5-nano\n$0.05': 'gpt5_nano_mc_500',
+    'o4-mini\n$1.10': 'o4_mini_mc_500',
+    'GPT-5-mini\n$0.25': 'gpt5_mini_mc_500',
 }
 
 data = {k: load_metrics(v) for k, v in configs.items()}
@@ -55,7 +58,7 @@ ax.set_title('Hindi Honorifics Cloze Benchmark — Model Comparison (n=500)', fo
 ax.set_xticks(x)
 ax.set_xticklabels(labels, rotation=25, ha='right', fontsize=10)
 ax.legend(fontsize=11)
-ax.set_ylim(0, 80)
+ax.set_ylim(0, 95)
 ax.grid(axis='y', alpha=0.3)
 
 for bar in bars1:
@@ -90,14 +93,14 @@ ax.set_title('Per-Tier Accuracy by Model', fontsize=14, fontweight='bold')
 ax.set_xticks(x)
 ax.set_xticklabels(llm_models, rotation=15, ha='right', fontsize=10)
 ax.legend(fontsize=11)
-ax.set_ylim(0, 85)
+ax.set_ylim(0, 100)
 ax.grid(axis='y', alpha=0.3)
 plt.tight_layout()
 plt.savefig(PLOTS_DIR / 'per_tier_accuracy.png', dpi=150)
 print(f"Saved {PLOTS_DIR / 'per_tier_accuracy.png'}")
 
 # --- Plot 3: Confusion matrix for best model (GPT-5.2) ---
-best = data.get('GPT-5.2', {})
+best = data.get('GPT-5-mini\n$0.25', {})
 conf = best.get('tier_confusion', {})
 tier_labels = ['T', 'TUM', 'AAP']
 matrix = np.zeros((3, 3))
@@ -119,7 +122,7 @@ ax.set_xticklabels(display_labels, fontsize=11)
 ax.set_yticklabels(display_labels, fontsize=11)
 ax.set_xlabel('Predicted Tier', fontsize=13)
 ax.set_ylabel('Gold Tier', fontsize=13)
-ax.set_title('Tier Confusion Matrix — GPT-5.2 (Hindi)\n(row-normalized %)', fontsize=13, fontweight='bold')
+ax.set_title('Tier Confusion Matrix — GPT-5-mini\n(row-normalized %)', fontsize=13, fontweight='bold')
 
 for i in range(3):
     for j in range(3):
@@ -153,5 +156,38 @@ for bar in bars:
 plt.tight_layout()
 plt.savefig(PLOTS_DIR / 'valid_form_rate.png', dpi=150)
 print(f"Saved {PLOTS_DIR / 'valid_form_rate.png'}")
+
+# --- Plot 5: Cost vs Accuracy scatter ---
+cost_data = {
+    'GPT-4.1-nano': (0.10, 'gpt41_nano_mc_500'),
+    'GPT-4o': (2.50, 'gpt4o_mc_500'),
+    'GPT-4o-mini': (0.15, 'gpt4o_mini_mc_500'),
+    'GPT-4.1-mini': (0.40, 'gpt41_mini_mc_500'),
+    'GPT-5.2': (1.75, 'gpt52_mc_500'),
+    'GPT-5-nano': (0.05, 'gpt5_nano_mc_500'),
+    'o4-mini': (1.10, 'o4_mini_mc_500'),
+    'GPT-5-mini': (0.25, 'gpt5_mini_mc_500'),
+}
+
+fig, ax = plt.subplots(figsize=(12, 7))
+for name, (cost, key) in cost_data.items():
+    m = load_metrics(key)
+    if m and m['tier_accuracy'] > 0:
+        color = '#E91E63' if any(k in name for k in ['nano', 'mini', '4o-mini']) else '#2196F3'
+        if 'o4' in name or '5-nano' in name or '5-mini' in name:
+            color = '#4CAF50'  # reasoning models in green
+        ax.scatter(cost, m['tier_accuracy'] * 100, s=200, color=color, edgecolors='white', linewidths=2, zorder=5)
+        ax.annotate(name, (cost, m['tier_accuracy'] * 100), textcoords="offset points",
+                   xytext=(10, 5), fontsize=10, fontweight='bold')
+
+ax.set_xlabel('Input Cost ($/1M tokens)', fontsize=13)
+ax.set_ylabel('Tier Accuracy (%)', fontsize=13)
+ax.set_title('Cost vs Accuracy — Hindi Honorifics Benchmark\n(green = reasoning models)', fontsize=14, fontweight='bold')
+ax.set_xscale('log')
+ax.grid(True, alpha=0.3)
+ax.set_ylim(30, 90)
+plt.tight_layout()
+plt.savefig(PLOTS_DIR / 'cost_vs_accuracy.png', dpi=150)
+print(f"Saved {PLOTS_DIR / 'cost_vs_accuracy.png'}")
 
 print("\nAll plots saved to", PLOTS_DIR)

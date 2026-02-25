@@ -133,12 +133,17 @@ async def call_openai(prompt: str, model: str = 'gpt-4o-mini') -> str:
     # Newer models (gpt-4.1+, gpt-5+, o3, o4) require max_completion_tokens
     use_new_param = any(model.startswith(p) for p in ['gpt-4.1', 'gpt-5', 'o3', 'o4'])
     token_key = "max_completion_tokens" if use_new_param else "max_tokens"
+    # Reasoning models need large token budget for internal reasoning
+    is_reasoning = any(k in model for k in ['o3', 'o4', 'gpt-5-nano', 'gpt-5-mini', 'gpt-5.'])
+    no_temp = is_reasoning or 'nano' in model
+    token_budget = 5000 if is_reasoning else 20
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        token_key: 20,
-        "temperature": 0.0,
+        token_key: token_budget,
     }
+    if not no_temp:
+        payload["temperature"] = 0.0
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=payload, headers=headers) as resp:
             data = await resp.json()
