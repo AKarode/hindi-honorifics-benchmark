@@ -1,97 +1,96 @@
-# Hindi Honorifics — Exploratory Study
+# Hindi Honorifics Benchmark — Project Charter
 
-Adit | Prof. Malihe Alikhani | Updated Jan 27, 2026
+Adit Karode | Prof. Malihe Alikhani | Updated Feb 25, 2026
 
 ---
 
-## Project Status: Exploratory Phase
+## Project Status: Active Development
 
-We are **discovering whether a problem exists** before building anything. No benchmark, no metrics, no claims yet.
+The project has progressed from exploratory investigation to a **working benchmark with results across 8 models and 3 baselines**. We've confirmed that LLMs exhibit systematic failures in Hindi second-person honorific usage, and reasoning models significantly outperform standard models.
 
-## What's the question?
+## Research Question
 
-Mukherjee et al. (EMNLP 2025) showed LLMs mess up Hindi honorifics in **third-person reference** (formal Wikipedia contexts). They noted: *"honorific dynamics can differ substantially in second-person usage and more casual or spoken communication."*
+**Do LLMs handle second-person honorifics (तू/तुम/आप) appropriately in conversational Hindi?**
 
-We're investigating that gap: **Do LLMs handle second-person honorifics (तू/तुम/आप) appropriately in conversational contexts?**
+Extending Mukherjee et al. (EMNLP 2025), who showed LLM failures in third-person Hindi honorifics, to the harder and more socially consequential second-person case.
 
-Why it matters: Hindi has 600M+ speakers. Honorifics aren't optional—using तू when you should use आप is genuinely rude. If LLMs are deployed in Hindi conversations, they need to get direct address right.
+## Why It Matters
 
-## What we're looking for
+Hindi has 600M+ speakers. Honorifics aren't optional — using तू when you should use आप is genuinely rude. As LLMs are deployed in Hindi-speaking contexts (chatbots, translation, creative writing), they must handle direct address correctly.
 
-Failure modes (if they exist):
-- Over-formality (always आप) or over-informality
-- Inconsistency across runs
-- Pronoun–verb agreement mismatches (आप with तुम verb forms)
-- Avoidance (rephrasing to dodge direct address)
-- Bias patterns in pronoun choice
+## Benchmark Design
 
-## Current Progress
+### Task 1: Cloze (Comprehension) — COMPLETE ✅
+- **Data**: 500 pronoun-cloze probes from real Hindi film dialogue (IndicDialogue)
+- **Method**: Fill-in-the-blank with correct pronoun (18 forms, 3 tiers)
+- **Models evaluated**: GPT-4o, GPT-4o-mini, GPT-4.1-nano, GPT-4.1-mini, GPT-5.2, GPT-5-nano, GPT-5-mini, o4-mini
+- **Baselines**: Random, majority, tier-majority
+- **Key result**: Reasoning models dominate (GPT-5-mini 81.4% tier accuracy), standard models plateau at ~70%
 
-### Done
-- **Probe extraction pipeline**: `scripts/indicdialogue_extract_probes.py` extracts pronoun-cloze probes from IndicDialogue Hindi subtitles
-- **Probe dataset**: `probes.csv` — large set of real dialogue lines with masked pronouns, context windows, and gold labels
-- **Data validation**: Devanagari filtering, context requirements, multiple pronoun forms (18 forms including oblique cases)
+### Task 2: Generation — Discourse Completion Task (DCT) — BUILT ✅
+- **Design**: 120 scenarios (40 per tier) across family, professional, social, institutional contexts
+- **Method**: Present social situation in Hindi, model generates dialogue, extract and score pronoun tier
+- **Metrics**: Tier accuracy, formality bias ratio, verb agreement, avoidance rate
+- **Status**: Pipeline built, scenarios created, ready to run
 
-### In Progress
-- Sampling strategy for manageable probe set
-- Verb agreement tracking (not yet in extraction)
+### Task 3: Multi-Turn Dialogue / Role-Play — PLANNED
+- Dialogue continuation and full conversation generation
+- Tests consistency, asymmetric honorific management
+- See GENERATION_TASK_DESIGN.md for full design
 
-### Not Started
-- Running probes on models (GPT-5.2, Claude Opus 4.5, Claude Sonnet 4, Gemini 2.5 Pro)
-- Pattern analysis
-- Any benchmark or metric work
+## Completed Work
+
+1. ✅ Probe extraction pipeline from IndicDialogue (~21K probes)
+2. ✅ Probe filtering and cleaning (500 stratified sample)
+3. ✅ Tier classifier (pronoun + verb agreement patterns)
+4. ✅ Cloze evaluation pipeline (MC via API + logprob backends)
+5. ✅ Full cloze evaluation across 8 models + 3 baselines
+6. ✅ Detailed analysis (EVAL_ANALYSIS.md, ERROR_ANALYSIS.md)
+7. ✅ Visualization pipeline (plots/)
+8. ✅ Generation task design document
+9. ✅ Generation eval pipeline (120 DCT scenarios)
+
+## Key Findings (Cloze Task)
+
+- Reasoning models (GPT-5-mini, o4-mini, GPT-5-nano) dominate at 75-81% tier accuracy
+- Standard models plateau at ~60-70% tier accuracy
+- GPT-5-nano ($0.05/1M) is the best cost-performance option for India deployment
+- Models show "politeness bias" — defaulting up the formality hierarchy when uncertain
+- तू (intimate) is the hardest tier; तुम (familiar) is easiest
+- ~80% tier accuracy may be the LLM ceiling without cultural grounding
 
 ## Data Sources
 
 | Source | Role | Status |
 |--------|------|--------|
-| IndicDialogue | Primary probe source (real subtitles) | Extraction complete |
-| Hindi Politeness Corpus | Validation/triangulation only | Available |
-| Wiki-LLM (Mukherjee) | Prior work reference | Not used for probes |
+| IndicDialogue | Primary probe source (real Hindi film subtitles) | ✅ Extraction complete |
+| Hindi Politeness Corpus (Kumar 2014) | Reference/validation | Available |
+| Mukherjee et al. (EMNLP 2025) | Prior work reference | Reference only |
 
-## Probe Types (from real data only)
+## Next Steps
 
-1. **Pronoun cloze**: Mask the pronoun, model fills blank given context. Gold = original.
-2. **Contextual paraphrase**: Same context, model paraphrases. Compare pronoun/verb choice.
-3. **Lexical-cue labeling**: Only lines with explicit relationship markers (sir/जी/maa/papa).
-
-## Constraints
-
-- **Non-synthetic only**: All probes derived from real dialogue, no invented scenarios
-- **Devanagari only**: English/romanized lines filtered out
-- **Context required**: Isolated utterances dropped
-
-## Limitations
-
-- Subtitles lack speaker/relationship metadata
-- Context windows are short (1-2 lines)
-- No verb form tracking yet
-- Hindi only
-
-## What comes next (in order)
-
-1. Sample probe set for manual validation
-2. Add verb agreement extraction to pipeline
-3. Run probes on target models
-4. Analyze outputs for failure patterns
-5. **Then decide**: Is there a problem worth a benchmark?
-
-## Open questions
-
-- What sampling strategy gives representative coverage?
-- How to handle ambiguous contexts where multiple pronouns are acceptable?
-- Minimum probe count for reliable pattern detection?
+- [ ] Run generation eval (DCT) across all models
+- [ ] Cross-family comparison (Gemini, Claude, Llama)
+- [ ] Scale cloze eval to full 21K probes for GPT-5-mini
+- [ ] Error analysis on generation outputs
+- [ ] Human annotation subset for generation validation
+- [ ] Implement Task B (multi-turn) and Task C (role-play)
+- [ ] Write paper for submission
 
 ## References
 
-- Mukherjee et al. (EMNLP 2025) — third-person honorific bias
-- Kumar (LREC 2014) — Hindi Politeness Corpus
+- Mukherjee et al. (EMNLP 2025) — 3rd-person honorific bias
 - Farhansyah et al. (ACL 2025) — Javanese honorifics
+- Zhao & Hawkins (EMNLP 2025) — LLM politeness strategies
+- Kumar (LREC 2014) — Hindi Politeness Corpus
+- Brown & Levinson (1987) — Politeness theory
 
 ---
 
 ## Log
 
-**Jan 27** — Probe extraction complete (`probes.csv`). Pivoting to sampling and model runs.
-
+**Feb 25** — Generation eval pipeline built (120 DCT scenarios). README and charter updated.
+**Feb 24** — Full cloze evaluation complete across 8 models. Error analysis done.
+**Feb 23** — Cloze eval pipeline working. First model runs (GPT-4o-mini, GPT-5-mini).
+**Jan 27** — Probe extraction complete. Pivoted to sampling and model runs.
 **Jan 26** — Shifted to non-synthetic probing using IndicDialogue; exploratory focus.
