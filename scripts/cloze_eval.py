@@ -130,10 +130,13 @@ async def call_openai(prompt: str, model: str = 'gpt-4o-mini') -> str:
 
     url = f"{base_url}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    # Newer models (gpt-4.1+, gpt-5+, o3, o4) require max_completion_tokens
+    use_new_param = any(model.startswith(p) for p in ['gpt-4.1', 'gpt-5', 'o3', 'o4'])
+    token_key = "max_completion_tokens" if use_new_param else "max_tokens"
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 20,
+        token_key: 20,
         "temperature": 0.0,
     }
     async with aiohttp.ClientSession() as session:

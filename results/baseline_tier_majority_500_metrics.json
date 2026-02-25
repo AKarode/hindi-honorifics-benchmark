@@ -1,0 +1,20 @@
+{
+  "total": 500,
+  "exact_accuracy": 0.25,
+  "tier_accuracy": 0.474,
+  "valid_form_rate": 1.0,
+  "tier_confusion": {
+    "AAP->TUM": 209,
+    "T->TUM": 54,
+    "TUM->TUM": 237
+  },
+  "top_predictions": {
+    "तुम": 500
+  },
+  "tier_accuracy_तू": 0.0,
+  "tier_count_तू": 54,
+  "tier_accuracy_तुम": 1.0,
+  "tier_count_तुम": 237,
+  "tier_accuracy_आप": 0.0,
+  "tier_count_आप": 209
+}

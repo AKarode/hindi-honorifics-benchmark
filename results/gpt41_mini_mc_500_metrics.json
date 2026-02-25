@@ -1,0 +1,35 @@
+{
+  "total": 500,
+  "exact_accuracy": 0.43,
+  "tier_accuracy": 0.626,
+  "valid_form_rate": 0.898,
+  "tier_confusion": {
+    "AAP->AAP": 96,
+    "AAP->T": 1,
+    "AAP->TUM": 88,
+    "T->AAP": 2,
+    "T->T": 15,
+    "T->TUM": 33,
+    "TUM->AAP": 7,
+    "TUM->T": 5,
+    "TUM->TUM": 202
+  },
+  "top_predictions": {
+    "तुम": 95,
+    "तुम्हें": 88,
+    "तुम्हारे": 53,
+    "तुम्हारी": 33,
+    "आप": 30,
+    "तुमसे": 28,
+    "आपके": 25,
+    "तुम्हारा": 24,
+    "आपको": 19,
+    "आपका": 13
+  },
+  "tier_accuracy_तू": 0.2778,
+  "tier_count_तू": 54,
+  "tier_accuracy_तुम": 0.8523,
+  "tier_count_तुम": 237,
+  "tier_accuracy_आप": 0.4593,
+  "tier_count_आप": 209
+}
