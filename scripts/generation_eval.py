@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
 """
-Hindi Honorifics Generation Evaluation — Task A: Discourse Completion Task (DCT)
+Hindi Honorifics Generation Evaluation — Corpus-Grounded Dialogue Continuation
 
-Presents social scenarios in Hindi, asks the model to produce dialogue,
+Presents real film dialogue context, asks the model to produce the next line,
 then extracts and scores the honorific tier of generated pronouns.
 
+All stimuli are derived from IndicDialogue subtitles (non-synthetic).
+
 Usage:
-  python generation_eval.py --model gpt-5-mini --output results/gen_gpt5_mini.jsonl
-  python generation_eval.py --model gpt-4o-mini --limit 10 --output results/gen_test.jsonl
+  python scripts/generation_eval.py --model gpt-5-mini --probes probes_generation_200.csv
+  python scripts/generation_eval.py --model gpt-4o-mini --probes probes_generation_200.csv --limit 10
 """
 
 import argparse
 import asyncio
+import csv
 import json
 import os
 import sys
-import time
 from collections import Counter
 from pathlib import Path
 
@@ -26,35 +28,23 @@ from tier_classifier import (
     classify_tier,
 )
 
-# === Prompt Template (Hindi, no honorific priming) ===
+# === Prompt Template ===
+# Hindi prompt, no mention of honorifics or pronouns to avoid priming.
 
-PROMPT_TEMPLATE = """स्थिति: {situation}
+PROMPT_TEMPLATE = """यह एक हिंदी फ़िल्म के संवाद का अंश है:
 
-{speaker} {addressee} से {action}। {speaker} क्या {verb}?
+{context}
 
-केवल {speaker} का संवाद लिखें (1-3 वाक्य)।"""
-
-
-def gender_verb(gender: str) -> str:
-    """Return appropriate verb form based on speaker gender."""
-    if gender == "F":
-        return "कहेगी"
-    return "कहेगा"
+इस संवाद को जारी रखते हुए अगला एक वाक्य लिखें।
+केवल संवाद लिखें, कोई व्याख्या नहीं:"""
 
 
-def build_prompt(scenario: dict) -> str:
-    return PROMPT_TEMPLATE.format(
-        situation=scenario["situation"],
-        speaker=scenario["speaker"],
-        addressee=scenario["addressee"],
-        action=scenario["action"],
-        verb=gender_verb(scenario.get("gender", "M")),
-    )
+def build_prompt(probe: dict) -> str:
+    """Build a dialogue continuation prompt from a probe's context."""
+    return PROMPT_TEMPLATE.format(context=probe["context"].strip())
 
 
 # === Scoring ===
-
-TIER_MAP = {"T": "T", "TUM": "TUM", "AAP": "AAP"}
 
 def extract_pronouns(text: str) -> list[dict]:
     """Extract all 2nd-person pronouns from text with their tiers."""
@@ -72,7 +62,6 @@ def check_verb_agreement(text: str, dominant_tier: str) -> dict:
     total_verbs = sum(verb_counts.values())
     if total_verbs == 0:
         return {"match": None, "verb_counts": verb_counts, "total": 0}
-    
     matching = verb_counts.get(dominant_tier, 0)
     return {
         "match": matching / total_verbs if total_verbs > 0 else None,
@@ -85,22 +74,17 @@ def score_generation(text: str, expected_tier: str) -> dict:
     """Score a single generated response."""
     pronouns = extract_pronouns(text)
     tier_result = classify_tier(text)
-    
-    # Pronoun tier counts
+
     tier_counts = Counter(p["tier"] for p in pronouns if p["tier"])
-    
-    # Determine generated tier
-    generated_tier = tier_result.tier  # from classify_tier composite
-    
-    # Tier accuracy
+    generated_tier = tier_result.tier
+
     tier_correct = generated_tier == expected_tier if generated_tier else False
-    
-    # Avoidance: no 2nd person pronouns at all
     avoided = len(pronouns) == 0
-    
-    # Verb agreement
-    verb_check = check_verb_agreement(text, generated_tier) if generated_tier else {"match": None, "verb_counts": {}, "total": 0}
-    
+
+    verb_check = (check_verb_agreement(text, generated_tier)
+                  if generated_tier
+                  else {"match": None, "verb_counts": {}, "total": 0})
+
     return {
         "generated_tier": generated_tier,
         "expected_tier": expected_tier,
@@ -127,7 +111,6 @@ async def call_openai(prompt: str, model: str, semaphore: asyncio.Semaphore) -> 
     url = f"{base_url}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    # Reasoning models: no temperature, large token budget
     is_reasoning = any(k in model for k in ["o3", "o4", "gpt-5-nano", "gpt-5-mini", "gpt-5."])
     use_new_param = any(model.startswith(p) for p in ["gpt-4.1", "gpt-5", "o3", "o4"])
     token_key = "max_completion_tokens" if use_new_param else "max_tokens"
@@ -154,33 +137,33 @@ async def call_openai(prompt: str, model: str, semaphore: asyncio.Semaphore) -> 
 
 # === Main Pipeline ===
 
-async def run_eval(scenarios: list[dict], model: str, max_concurrent: int = 5,
+async def run_eval(probes: list[dict], model: str, max_concurrent: int = 5,
                    limit: int = None) -> list[dict]:
-    """Run generation evaluation on all scenarios."""
+    """Run generation evaluation on all probes."""
     if limit:
-        scenarios = scenarios[:limit]
+        probes = probes[:limit]
 
     semaphore = asyncio.Semaphore(max_concurrent)
     results = []
 
-    async def eval_one(scenario):
-        prompt = build_prompt(scenario)
+    async def eval_one(probe):
+        prompt = build_prompt(probe)
         response = await call_openai(prompt, model, semaphore)
-        score = score_generation(response, scenario["expected_tier"])
+        expected_tier = PRONOUN_TO_TIER.get(probe["gold_pronoun"], probe.get("gold_tier"))
+        score = score_generation(response, expected_tier)
         return {
-            "id": scenario["id"],
-            "expected_tier": scenario["expected_tier"],
-            "category": scenario["category"],
-            "speaker": scenario["speaker"],
-            "addressee": scenario["addressee"],
+            "movie": probe["movie"],
+            "gold_pronoun": probe["gold_pronoun"],
+            "expected_tier": expected_tier,
+            "gold_line": probe["gold_line"],
+            "context": probe["context"],
             "prompt": prompt,
             "response": response,
             **score,
         }
 
-    tasks = [eval_one(s) for s in scenarios]
-    
-    # Process in batches for progress reporting
+    tasks = [eval_one(p) for p in probes]
+
     for i in range(0, len(tasks), 20):
         batch = tasks[i:i+20]
         batch_results = await asyncio.gather(*batch, return_exceptions=True)
@@ -201,25 +184,19 @@ def compute_metrics(results: list[dict]) -> dict:
     if total == 0:
         return {"total": 0, "error": "no valid results"}
 
-    # Tier accuracy
     tier_correct = sum(1 for r in valid if r["tier_correct"])
-    
-    # Avoidance rate
     avoided = sum(1 for r in valid if r["avoided"])
-    
-    # Formality bias: proportion of AAP across all outputs
+
     all_tier_counts = Counter()
     for r in valid:
         for tier, count in r.get("pronoun_counts", {}).items():
             all_tier_counts[tier] += count
     total_pronouns = sum(all_tier_counts.values())
-    
-    # Verb agreement (among those with verbs)
+
     verb_scores = [r["verb_agreement"] for r in valid if r["verb_agreement"] is not None]
-    
+
     metrics = {
         "total": total,
-        "model": valid[0].get("model", "unknown") if valid else "unknown",
         "tier_accuracy": round(tier_correct / total, 4),
         "avoidance_rate": round(avoided / total, 4),
         "formality_bias_ratio": round(all_tier_counts.get("AAP", 0) / total_pronouns, 4) if total_pronouns > 0 else None,
@@ -248,13 +225,13 @@ def compute_metrics(results: list[dict]) -> dict:
             confusion[(r["expected_tier"], "NONE")] += 1
     metrics["tier_confusion"] = {f"{g}->{p}": c for (g, p), c in sorted(confusion.items())}
 
-    # Per-category breakdown
-    categories = set(r.get("category", "") for r in valid)
-    for cat in sorted(categories):
-        cat_results = [r for r in valid if r.get("category") == cat]
-        if cat_results:
-            correct = sum(1 for r in cat_results if r["tier_correct"])
-            metrics[f"accuracy_{cat}"] = round(correct / len(cat_results), 4)
+    # Per-movie breakdown
+    movies = set(r.get("movie", "") for r in valid)
+    for movie in sorted(movies):
+        movie_results = [r for r in valid if r.get("movie") == movie]
+        if movie_results:
+            correct = sum(1 for r in movie_results if r["tier_correct"])
+            metrics[f"accuracy_{movie}"] = round(correct / len(movie_results), 4)
 
     return metrics
 
@@ -262,9 +239,9 @@ def compute_metrics(results: list[dict]) -> dict:
 def print_report(metrics: dict, model: str):
     """Print formatted report."""
     print(f"\n{'='*60}")
-    print(f"  GENERATION EVAL REPORT — {model}")
+    print(f"  GENERATION EVAL (DIALOGUE CONTINUATION) — {model}")
     print(f"{'='*60}")
-    print(f"  Total scenarios:     {metrics['total']}")
+    print(f"  Total probes:        {metrics['total']}")
     print(f"  Tier accuracy:       {metrics['tier_accuracy']:.1%}")
     print(f"  Avoidance rate:      {metrics['avoidance_rate']:.1%}")
     print(f"  Formality bias (AAP ratio): {metrics.get('formality_bias_ratio', 'N/A')}")
@@ -280,23 +257,16 @@ def print_report(metrics: dict, model: str):
             print(f"    {tier}: {acc:.1%}  (n={count}, avoided={avoid:.1%})")
         else:
             print(f"    {tier}: {acc}  (n={count})")
-    
+
     print()
     print("  Tier confusion:")
-    print(f"    {'':>8} → T     TUM    AAP    NONE")
+    print(f"    {'':>8} -> T     TUM    AAP    NONE")
     for gold in ["T", "TUM", "AAP"]:
         row = []
         for pred in ["T", "TUM", "AAP", "NONE"]:
             row.append(metrics.get("tier_confusion", {}).get(f"{gold}->{pred}", 0))
         print(f"    {gold:>5}: {row[0]:>5}  {row[1]:>5}  {row[2]:>5}  {row[3]:>5}")
 
-    print()
-    print("  Per-category accuracy:")
-    for key in sorted(metrics.keys()):
-        if key.startswith("accuracy_"):
-            cat = key.replace("accuracy_", "")
-            print(f"    {cat}: {metrics[key]:.1%}")
-    
     print(f"{'='*60}\n")
 
 
@@ -314,33 +284,32 @@ def save_results(results: list[dict], metrics: dict, path: str):
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Hindi Honorifics Generation Evaluation (DCT)")
+    parser = argparse.ArgumentParser(
+        description="Hindi Honorifics Generation Evaluation (Dialogue Continuation)")
     parser.add_argument("--model", default="gpt-5-mini", help="OpenAI model name")
+    parser.add_argument("--probes", required=True,
+                        help="Path to generation probes CSV (from sample_generation.py)")
     parser.add_argument("--output", default="results/gen_eval.jsonl", help="Output JSONL path")
-    parser.add_argument("--limit", type=int, default=None, help="Limit number of scenarios")
+    parser.add_argument("--limit", type=int, default=None, help="Limit number of probes")
     parser.add_argument("--concurrent", type=int, default=5, help="Max concurrent API calls")
-    parser.add_argument("--scenarios", default=None,
-                       help="Path to scenarios JSON (default: scripts/generation_scenarios.json)")
 
     args = parser.parse_args()
 
-    # Load scenarios
-    scenarios_path = args.scenarios or str(Path(__file__).parent / "generation_scenarios.json")
-    with open(scenarios_path, "r", encoding="utf-8") as f:
-        scenarios = json.load(f)
+    # Load probes from CSV
+    with open(args.probes, newline="", encoding="utf-8") as f:
+        probes = list(csv.DictReader(f))
 
-    print(f"Loaded {len(scenarios)} scenarios")
+    print(f"Loaded {len(probes)} generation probes from {args.probes}")
     print(f"Model: {args.model}")
-    print(f"Concurrent: {args.concurrent}")
     if args.limit:
         print(f"Limit: {args.limit}")
 
-    results = await run_eval(scenarios, args.model, 
+    results = await run_eval(probes, args.model,
                              max_concurrent=args.concurrent, limit=args.limit)
 
     metrics = compute_metrics(results)
     metrics["model"] = args.model
-    
+
     print_report(metrics, args.model)
     save_results(results, metrics, args.output)
 

@@ -1,12 +1,12 @@
 # Hindi Honorifics Benchmark — Project Charter
 
-Adit Karode | Prof. Malihe Alikhani | Updated Feb 25, 2026
+Adit Karode | Prof. Malihe Alikhani | Updated Mar 9, 2026
 
 ---
 
 ## Project Status: Active Development
 
-The project has progressed from exploratory investigation to a **working benchmark with results across 8 models and 3 baselines**. We've confirmed that LLMs exhibit systematic failures in Hindi second-person honorific usage, and reasoning models significantly outperform standard models.
+The project has a **fully corpus-grounded evaluation pipeline with two tasks**. All data is derived from real Hindi film dialogue (IndicDialogue) — no synthetic scenarios. Evaluation samples are ready; model runs are pending.
 
 ## Research Question
 
@@ -20,61 +20,51 @@ Hindi has 600M+ speakers. Honorifics aren't optional — using तू when you s
 
 ## Benchmark Design
 
-### Task 1: Cloze (Comprehension) — COMPLETE ✅
-- **Data**: 500 pronoun-cloze probes from real Hindi film dialogue (IndicDialogue)
+### Task 1: Cloze (Comprehension) — PIPELINE READY
+- **Data**: 500 pronoun-cloze probes from real Hindi film dialogue (IndicDialogue), stratified by tier (167 T / 167 TUM / 166 AAP) and proportional by movie across all 17 films
 - **Method**: Fill-in-the-blank with correct pronoun (18 forms, 3 tiers)
-- **Models evaluated**: GPT-4o, GPT-4o-mini, GPT-4.1-nano, GPT-4.1-mini, GPT-5.2, GPT-5-nano, GPT-5-mini, o4-mini
 - **Baselines**: Random, majority, tier-majority
-- **Key result**: Reasoning models dominate (GPT-5-mini 81.4% tier accuracy), standard models plateau at ~70%
+- **Status**: Pipeline and sample ready, model runs pending
 
-### Task 2: Generation — Discourse Completion Task (DCT) — BUILT ✅
-- **Design**: 120 scenarios (40 per tier) across family, professional, social, institutional contexts
-- **Method**: Present social situation in Hindi, model generates dialogue, extract and score pronoun tier
+### Task 2: Generation — Dialogue Continuation — PIPELINE READY
+- **Data**: 200 probes from IndicDialogue, filtered to single-tier contexts (no speaker-switch ambiguity), stratified by tier (67 T / 67 TUM / 66 AAP) across 17 movies
+- **Method**: Present real dialogue context, model generates the next line, extract and score pronoun tier
 - **Metrics**: Tier accuracy, formality bias ratio, verb agreement, avoidance rate
-- **Status**: Pipeline built, scenarios created, ready to run
-
-### Task 3: Multi-Turn Dialogue / Role-Play — PLANNED
-- Dialogue continuation and full conversation generation
-- Tests consistency, asymmetric honorific management
-- See GENERATION_TASK_DESIGN.md for full design
+- **Status**: Pipeline and sample ready, model runs pending
 
 ## Completed Work
 
-1. ✅ Probe extraction pipeline from IndicDialogue (~21K probes)
-2. ✅ Probe filtering and cleaning (500 stratified sample)
-3. ✅ Tier classifier (pronoun + verb agreement patterns)
-4. ✅ Cloze evaluation pipeline (MC via API + logprob backends)
-5. ✅ Full cloze evaluation across 8 models + 3 baselines
-6. ✅ Detailed analysis (EVAL_ANALYSIS.md, ERROR_ANALYSIS.md)
-7. ✅ Visualization pipeline (plots/)
-8. ✅ Generation task design document
-9. ✅ Generation eval pipeline (120 DCT scenarios)
-
-## Key Findings (Cloze Task)
-
-- Reasoning models (GPT-5-mini, o4-mini, GPT-5-nano) dominate at 75-81% tier accuracy
-- Standard models plateau at ~60-70% tier accuracy
-- GPT-5-nano ($0.05/1M) is the best cost-performance option for India deployment
-- Models show "politeness bias" — defaulting up the formality hierarchy when uncertain
-- तू (intimate) is the hardest tier; तुम (familiar) is easiest
-- ~80% tier accuracy may be the LLM ceiling without cultural grounding
+1. Probe extraction pipeline from IndicDialogue (~21K raw probes)
+2. Probe filtering to 17 high-quality Hindi-original films (4,382 probes)
+3. Deduplication on (masked_line, gold_pronoun) — 4,271 unique probes
+4. Stratified sampling for cloze task (balanced tier + proportional movie)
+5. Filtered sampling for generation task (single-tier contexts, >= 15 char gold lines)
+6. Tier classifier (pronoun detection + verb agreement patterns)
+7. Cloze evaluation pipeline (MC via API + logprob backends + 3 baselines)
+8. Visualization pipeline (plots/)
+9. Generation eval pipeline (corpus-grounded dialogue continuation)
 
 ## Data Sources
 
 | Source | Role | Status |
 |--------|------|--------|
-| IndicDialogue | Primary probe source (real Hindi film subtitles) | ✅ Extraction complete |
+| IndicDialogue | Primary probe source (real Hindi film subtitles) | Extraction complete |
 | Hindi Politeness Corpus (Kumar 2014) | Reference/validation | Available |
 | Mukherjee et al. (EMNLP 2025) | Prior work reference | Reference only |
 
+## Known Limitations
+
+- **No speaker diarization**: IndicDialogue subtitles lack speaker labels. Mitigated in generation by filtering to single-register contexts.
+- **No human validation**: Gold labels come directly from subtitle text. No human annotator verification of probe quality.
+- **TUM_VERB regex**: The verb pattern in `tier_classifier.py` for TUM-tier matches any ो-ending word, producing false positives.
+
 ## Next Steps
 
-- [ ] Run generation eval (DCT) across all models
-- [ ] Cross-family comparison (Gemini, Claude, Llama)
-- [ ] Scale cloze eval to full 21K probes for GPT-5-mini
-- [ ] Error analysis on generation outputs
-- [ ] Human annotation subset for generation validation
-- [ ] Implement Task B (multi-turn) and Task C (role-play)
+- [ ] Run cloze evaluation across models (`probes_stratified_500.csv`)
+- [ ] Run generation evaluation across models (`probes_generation_200.csv`)
+- [ ] Cross-family comparison (Gemini, Claude, Llama via free APIs)
+- [ ] Fix TUM_VERB regex false positives in tier_classifier.py
+- [ ] Error analysis on outputs
 - [ ] Write paper for submission
 
 ## References
@@ -89,8 +79,10 @@ Hindi has 600M+ speakers. Honorifics aren't optional — using तू when you s
 
 ## Log
 
-**Feb 25** — Generation eval pipeline built (120 DCT scenarios). README and charter updated.
-**Feb 24** — Full cloze evaluation complete across 8 models. Error analysis done.
-**Feb 23** — Cloze eval pipeline working. First model runs (GPT-4o-mini, GPT-5-mini).
+**Mar 9** — Replaced synthetic DCT generation task with corpus-grounded dialogue continuation. Filtered to single-tier contexts to address speaker diarization gap. Cleaned all repo documentation. Removed stale analysis docs based on invalid sample.
+**Mar 8** — Fixed stratified sampling (old sample was first 500 rows = 2 movies). Deduplicated full probe set (111 duplicates removed). Researched generation task alternatives.
+**Feb 25** — Generation eval pipeline built (initial DCT approach, later replaced).
+**Feb 24** — Cloze eval pipeline complete. Initial model runs on non-stratified sample.
+**Feb 23** — Cloze eval pipeline working. First model runs.
 **Jan 27** — Probe extraction complete. Pivoted to sampling and model runs.
 **Jan 26** — Shifted to non-synthetic probing using IndicDialogue; exploratory focus.
