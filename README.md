@@ -49,6 +49,48 @@ Given real film dialogue context, generate the next line. Tests whether models p
 
 ---
 
+## Results: GPT-5-mini
+
+### Cloze (Comprehension)
+
+| Metric | Value |
+|---|---|
+| Exact accuracy | 75.0% |
+| **Tier accuracy** | **81.4%** |
+| Valid form rate | 100% |
+
+| Per-Tier | तू (intimate) | तुम (familiar) | आप (formal) |
+|---|---|---|---|
+| Tier accuracy | 80.8% (n=167) | 87.4% (n=167) | 75.9% (n=166) |
+
+### Generation (Production)
+
+| Metric | Value |
+|---|---|
+| **Tier accuracy** | **40.5%** |
+| Avoidance rate | 54.0% |
+| Formality bias (AAP ratio) | 0.47 |
+| Verb agreement | 72.7% |
+
+| Per-Tier | तू (intimate) | तुम (familiar) | आप (formal) |
+|---|---|---|---|
+| Tier accuracy | 17.9% (n=67) | 65.1% (n=66) | 38.8% (n=67) |
+| Avoidance rate | 50.7% | 59.1% | 52.2% |
+
+### Key Findings
+
+1. **Comprehension ≠ Production.** GPT-5-mini scores 81.4% on cloze but only 40.5% on generation — it can *recognize* the correct honorific tier but struggles to *produce* it in free dialogue.
+
+2. **54% avoidance rate in generation.** The model dodges 2nd-person pronouns entirely in over half its continuations, using passive constructions or dropping subjects.
+
+3. **तू is nearly impossible to generate.** Only 17.9% accuracy on the intimate tier — the model almost never produces तू-tier forms freely, even when the dialogue context is entirely in that register.
+
+4. **तुम is the default.** The confusion matrix shows the model collapses toward तुम: 36/67 gold-तू probes and 31/67 gold-आप probes get predicted as तुम.
+
+5. **Verb agreement is decent at 72.7%** — when the model does use pronouns, it mostly gets the conjugation right.
+
+---
+
 ## How to Run
 
 ### Prerequisites
