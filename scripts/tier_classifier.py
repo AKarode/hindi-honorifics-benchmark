@@ -20,9 +20,11 @@ PRONOUN_TO_TIER = {
     # तू tier (intimate/inferior)
     'तू': 'T', 'तुझे': 'T', 'तुझसे': 'T', 'तुझको': 'T',
     'तेरा': 'T', 'तेरी': 'T', 'तेरे': 'T',
+    'तूने': 'T', 'तुझ': 'T',  # ergative and bare oblique
     # तुम tier (informal/familiar)
     'तुम': 'TUM', 'तुम्हें': 'TUM', 'तुमसे': 'TUM', 'तुमको': 'TUM',
     'तुम्हारा': 'TUM', 'तुम्हारी': 'TUM', 'तुम्हारे': 'TUM',
+    'तुमने': 'TUM',  # ergative
     # आप tier (formal/respectful)
     'आप': 'AAP', 'आपको': 'AAP', 'आपसे': 'AAP',
     'आपका': 'AAP', 'आपकी': 'AAP', 'आपके': 'AAP', 'आपने': 'AAP',
@@ -40,10 +42,21 @@ PRONOUN_PATTERN = re.compile(
 
 # === Verb Patterns ===
 # आप-tier imperatives: -इए, -इये, -ईए (कीजिए, बोलिए, जाइए, बताइए)
-AAP_VERB = re.compile(r'(?<!\S)\S+(?:िए|िये|ीए|ईए)(?!\S)')
+# Include both dependent (ि) and independent (इ) vowel forms
+# Exclude perfective participles: लिए, किए, दिए, हुए (and their variants)
+_AAP_VERB_EXCLUSIONS = {'लिए', 'किए', 'दिए', 'हुए', 'लिये', 'किये', 'दिये', 'हुये'}
+AAP_VERB = re.compile(r'(?<!\S)\S+(?:िए|िये|ीए|ईए|इए|इये)(?!\S)')
 
 # तुम-tier imperatives: -ओ ending (करो, बोलो, जाओ, बताओ, देखो)
-TUM_VERB = re.compile(r'(?<!\S)\S+ो(?!\S)')
+# Require at least 3 Devanagari code points to exclude false positives (तो, को, हो, वो, जो, दो)
+# Match both dependent ो (U+094B) and independent ओ (U+0913) for stems like जा→जाओ
+# Exclude -को compound postpositions
+_TUM_VERB_EXCLUSIONS = {
+    'तो', 'को', 'हो', 'वो', 'जो', 'दो', 'सो', 'नो', 'पो', 'मो', 'बो', 'रो', 'लो',
+    'उसको', 'इसको', 'उनको', 'किसको', 'हमको', 'जिसको', 'किसीको', 'सबको',
+    'मुझको', 'तुझको', 'तुमको', 'आपको', 'लोगों',
+}
+TUM_VERB = re.compile(r'(?<!\S)[\u0900-\u097F]{2,}[\u094B\u0913](?!\S)')
 
 # तू-tier: bare stem imperatives are hard to detect reliably
 # but verb+है (करता है, करती है) vs verb+हो (करते हो) vs verb+हैं (करते हैं) helps
@@ -74,10 +87,12 @@ def classify_tier(text: str) -> TierResult:
         if tier:
             pronoun_tier_counts[tier] += 1
 
-    # 2. Count verb pattern hits
+    # 2. Count verb pattern hits (with exclusion filtering)
     verb_tier_counts = Counter()
-    verb_tier_counts['AAP'] = len(AAP_VERB.findall(text))
-    verb_tier_counts['TUM'] = len(TUM_VERB.findall(text))
+    aap_matches = [m for m in AAP_VERB.findall(text) if m not in _AAP_VERB_EXCLUSIONS]
+    tum_matches = [m for m in TUM_VERB.findall(text) if m not in _TUM_VERB_EXCLUSIONS]
+    verb_tier_counts['AAP'] = len(aap_matches)
+    verb_tier_counts['TUM'] = len(tum_matches)
     # Auxiliary patterns
     verb_tier_counts['T'] += len(TU_AUX.findall(text))
     verb_tier_counts['TUM'] += len(TUM_AUX.findall(text))

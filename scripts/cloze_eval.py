@@ -25,8 +25,10 @@ import csv
 import json
 import os
 import random
+import re
 import sys
 import time
+import unicodedata
 from collections import Counter
 from pathlib import Path
 
@@ -71,11 +73,19 @@ PROMPT_FREE_HINDI = """निम्नलिखित संवाद में 
 केवल एक शब्द लिखें:"""
 
 
-def format_mc_prompt(probe: dict, lang: str = 'hindi', shuffle: bool = True) -> str:
-    """Format a forced-choice MC prompt for a single probe."""
+def format_mc_prompt(probe: dict, lang: str = 'hindi', shuffle: bool = True, 
+                     seed: int = None, probe_idx: int = 0) -> str:
+    """Format a forced-choice MC prompt for a single probe.
+    
+    Args:
+        seed: Base seed for reproducible shuffling. Combined with probe_idx.
+        probe_idx: Probe index, combined with seed for per-probe reproducibility.
+    """
     forms = ALL_FORMS.copy()
     if shuffle:
-        random.shuffle(forms)
+        # Use seeded RNG for reproducibility
+        rng = random.Random(seed + probe_idx if seed is not None else None)
+        rng.shuffle(forms)
     options = ', '.join(forms)
 
     template = PROMPT_MC_HINDI if lang == 'hindi' else PROMPT_MC_ENGLISH
@@ -173,6 +183,67 @@ async def call_groq(prompt: str, model: str = 'llama-3.1-8b-instant') -> str:
             data = await resp.json()
             try:
                 return data['choices'][0]['message']['content'].strip()
+            except (KeyError, IndexError):
+                return f"ERROR: {json.dumps(data)[:200]}"
+
+
+async def call_sarvam(prompt: str, model: str = 'sarvam-m') -> str:
+    """Call Sarvam AI API (India-first models).
+    
+    Sarvam uses OpenAI-compatible endpoint but with api-subscription-key header.
+    Models: sarvam-m (free), sarvam-105b (paid)
+    """
+    import aiohttp
+    api_key = os.environ.get('SARVAM_API_KEY')
+    if not api_key:
+        raise ValueError("Set SARVAM_API_KEY env var")
+
+    url = "https://api.sarvam.ai/v1/chat/completions"
+    headers = {
+        "api-subscription-key": api_key,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 20,
+        "temperature": 0.0,
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as resp:
+            data = await resp.json()
+            try:
+                return data['choices'][0]['message']['content'].strip()
+            except (KeyError, IndexError):
+                return f"ERROR: {json.dumps(data)[:200]}"
+
+
+async def call_anthropic(prompt: str, model: str = 'claude-sonnet-4-5') -> str:
+    """Call Anthropic Claude API.
+    
+    Models: claude-opus-4-5, claude-sonnet-4-5, claude-haiku-4-5
+    """
+    import aiohttp
+    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    if not api_key:
+        raise ValueError("Set ANTHROPIC_API_KEY env var")
+
+    url = "https://api.anthropic.com/v1/messages"
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": model,
+        "max_tokens": 20,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as resp:
+            data = await resp.json()
+            try:
+                return data['content'][0]['text'].strip()
             except (KeyError, IndexError):
                 return f"ERROR: {json.dumps(data)[:200]}"
 
@@ -311,13 +382,53 @@ def baseline_tier_majority(probes: list[dict]) -> list[dict]:
     return [{'probe_idx': i, 'predicted': majority_form, 'scores': {}} for i in range(len(probes))]
 
 
+# === Response Cleaning ===
+
+def extract_pronoun_from_response(response: str) -> str:
+    """Extract a valid pronoun form from a potentially verbose response.
+    
+    Handles cases like:
+    - "आपसे" (clean response)
+    - "सही सर्वनाम है: **आपसे**" (verbose with markdown)
+    - "तुम (यह उपयुक्त है)" (verbose with parenthetical)
+    
+    Returns the first valid pronoun found, or the cleaned response if none found.
+    """
+    # Normalize Unicode (NFC)
+    response = unicodedata.normalize('NFC', response)
+    
+    # Remove markdown bold markers
+    response = response.replace('**', '')
+    
+    # First, try simple cleaning (for clean responses)
+    simple = response.strip().split('\n')[0].strip()
+    simple = simple.strip('"\'।,.!?():[] ')
+    if simple in PRONOUN_TO_TIER:
+        return simple
+    
+    # If simple cleaning didn't yield a valid form, search for any valid pronoun
+    # Sort by length (longest first) to match तुम्हारा before तुम
+    for form in sorted(PRONOUN_TO_TIER.keys(), key=len, reverse=True):
+        if form in response:
+            return form
+    
+    # No valid pronoun found - return cleaned response for error tracking
+    return simple
+
+
 # === MC Evaluation Runner ===
 
 async def run_mc_eval(probes: list[dict], backend: str, model: str,
                       lang: str = 'hindi', max_concurrent: int = 5,
-                      limit: int = None) -> list[dict]:
+                      limit: int = None, seed: int = 42) -> list[dict]:
     """Run MC evaluation across all probes using an API backend."""
-    call_fn = {'gemini': call_gemini, 'openai': call_openai, 'groq': call_groq}[backend]
+    call_fn = {
+        'gemini': call_gemini, 
+        'openai': call_openai, 
+        'groq': call_groq,
+        'sarvam': call_sarvam,
+        'anthropic': call_anthropic,
+    }[backend]
 
     if limit:
         probes = probes[:limit]
@@ -327,22 +438,22 @@ async def run_mc_eval(probes: list[dict], backend: str, model: str,
 
     async def eval_one(i, probe):
         async with semaphore:
-            prompt = format_mc_prompt(probe, lang=lang)
+            prompt = format_mc_prompt(probe, lang=lang, seed=seed, probe_idx=i)
             try:
                 response = await call_fn(prompt, model=model)
-                # Clean response — extract just the pronoun
-                response = response.strip().split('\n')[0].strip()
-                # Remove any surrounding quotes or punctuation
-                response = response.strip('"\'।,.!? ')
+                # Extract pronoun from potentially verbose response
+                predicted = extract_pronoun_from_response(response)
             except Exception as e:
                 response = f"ERROR: {e}"
+                predicted = response
 
             # Rate limiting
             await asyncio.sleep(0.5)  # conservative, adjust per API
 
             return {
                 'probe_idx': i,
-                'predicted': response,
+                'predicted': predicted,
+                'raw_response': response if predicted != response else None,
                 'scores': {},
             }
 
@@ -361,19 +472,42 @@ async def run_mc_eval(probes: list[dict], backend: str, model: str,
 # === Aggregate Scoring ===
 
 def compute_metrics(probes: list[dict], results: list[dict]) -> dict:
-    """Compute aggregate metrics from evaluation results."""
+    """Compute aggregate metrics from evaluation results.
+    
+    ERROR responses are filtered out and reported separately.
+    """
+    # Separate errors from valid results
+    errors = [r for r in results if r['predicted'].startswith('ERROR')]
+    valid_results = [r for r in results if not r['predicted'].startswith('ERROR')]
+    
+    total_submitted = len(results)
+    total = len(valid_results)
+    
+    if total == 0:
+        return {
+            'total_submitted': total_submitted,
+            'total': 0,
+            'error_count': len(errors),
+            'error_rate': round(len(errors) / total_submitted, 4) if total_submitted else 0,
+            'exact_accuracy': 0,
+            'tier_accuracy': 0,
+            'valid_form_rate': 0,
+            'error': 'no valid results',
+        }
+    
     exact_matches = 0
     tier_matches = 0
     valid_forms = 0
-    total = len(results)
 
     tier_confusion = Counter()  # (gold_tier, pred_tier) -> count
     form_distribution = Counter()  # predicted form -> count
 
-    for res in results:
+    for res in valid_results:
         idx = res['probe_idx']
         probe = probes[idx]
-        score = score_prediction(res['predicted'], probe['gold_pronoun'])
+        # Normalize predicted value before scoring
+        predicted = unicodedata.normalize('NFC', res['predicted'].strip())
+        score = score_prediction(predicted, probe['gold_pronoun'])
 
         exact_matches += score['exact_match']
         tier_matches += score['tier_match']
@@ -381,10 +515,13 @@ def compute_metrics(probes: list[dict], results: list[dict]) -> dict:
 
         if score['gold_tier'] and score['pred_tier']:
             tier_confusion[(score['gold_tier'], score['pred_tier'])] += 1
-        form_distribution[res['predicted']] += 1
+        form_distribution[predicted] += 1
 
     metrics = {
+        'total_submitted': total_submitted,
         'total': total,
+        'error_count': len(errors),
+        'error_rate': round(len(errors) / total_submitted, 4) if total_submitted else 0,
         'exact_accuracy': round(exact_matches / total, 4) if total else 0,
         'tier_accuracy': round(tier_matches / total, 4) if total else 0,
         'valid_form_rate': round(valid_forms / total, 4) if total else 0,
@@ -392,13 +529,13 @@ def compute_metrics(probes: list[dict], results: list[dict]) -> dict:
         'top_predictions': dict(form_distribution.most_common(10)),
     }
 
-    # Per-tier accuracy
+    # Per-tier accuracy (using valid results only)
     for tier in ['T', 'TUM', 'AAP']:
-        tier_probes = [(probes[r['probe_idx']], r) for r in results
+        tier_probes = [(probes[r['probe_idx']], r) for r in valid_results
                        if gold_to_tier(probes[r['probe_idx']]['gold_pronoun']) == tier]
         if tier_probes:
             tier_correct = sum(1 for p, r in tier_probes
-                             if PRONOUN_TO_TIER.get(r['predicted'].strip()) == tier)
+                             if PRONOUN_TO_TIER.get(unicodedata.normalize('NFC', r['predicted'].strip())) == tier)
             metrics[f'tier_accuracy_{TIER_LABELS[tier]}'] = round(tier_correct / len(tier_probes), 4)
             metrics[f'tier_count_{TIER_LABELS[tier]}'] = len(tier_probes)
 
@@ -410,7 +547,10 @@ def print_report(metrics: dict, label: str = ''):
     print(f"\n{'='*60}")
     print(f"  CLOZE EVALUATION REPORT{f' — {label}' if label else ''}")
     print(f"{'='*60}")
-    print(f"  Total probes:      {metrics['total']}")
+    print(f"  Total submitted:   {metrics.get('total_submitted', metrics['total'])}")
+    print(f"  Valid responses:   {metrics['total']}")
+    if metrics.get('error_count', 0) > 0:
+        print(f"  Errors:            {metrics['error_count']} ({metrics['error_rate']:.1%})")
     print(f"  Exact accuracy:    {metrics['exact_accuracy']:.1%}")
     print(f"  Tier accuracy:     {metrics['tier_accuracy']:.1%}")
     print(f"  Valid form rate:   {metrics['valid_form_rate']:.1%}")
@@ -472,7 +612,8 @@ async def main():
                                'baseline-majority', 'baseline-random', 'baseline-tier-majority'],
                        help='Evaluation method')
     parser.add_argument('--model', default=None, help='Model name/identifier')
-    parser.add_argument('--backend', default='gemini', choices=['gemini', 'openai', 'groq'],
+    parser.add_argument('--backend', default='gemini', 
+                       choices=['gemini', 'openai', 'groq', 'sarvam', 'anthropic'],
                        help='API backend for MC method')
     parser.add_argument('--probes', required=True, help='Path to probes CSV')
     parser.add_argument('--output', required=True, help='Output JSONL path')
@@ -480,6 +621,7 @@ async def main():
                        help='Prompt language')
     parser.add_argument('--limit', type=int, default=None, help='Limit number of probes (for testing)')
     parser.add_argument('--concurrent', type=int, default=5, help='Max concurrent API calls')
+    parser.add_argument('--seed', type=int, default=42, help='Seed for reproducible option shuffling')
 
     args = parser.parse_args()
     probes = load_probes(args.probes)
@@ -492,11 +634,18 @@ async def main():
     print(f"Method: {args.method}")
 
     if args.method == 'mc':
-        model = args.model or {'gemini': 'gemini-2.0-flash', 'openai': 'gpt-4o-mini', 'groq': 'llama-3.1-8b-instant'}[args.backend]
+        default_models = {
+            'gemini': 'gemini-2.5-flash', 
+            'openai': 'gpt-4o-mini', 
+            'groq': 'llama-3.1-8b-instant',
+            'sarvam': 'sarvam-m',
+            'anthropic': 'claude-sonnet-4-5',
+        }
+        model = args.model or default_models[args.backend]
         print(f"Model: {model} via {args.backend}")
         results = await run_mc_eval(probes, args.backend, model,
                                     lang=args.lang, max_concurrent=args.concurrent,
-                                    limit=args.limit)
+                                    limit=args.limit, seed=args.seed)
     elif args.method == 'logprob-muril':
         results = logprob_muril(probes)
     elif args.method == 'logprob-causal':
